@@ -1,3 +1,8 @@
+#!/usr/bin/env node
+/* LOANER — the same workloads this page runs in your browser, run on your CI.
+   Generated from src/lib/bench.mjs. Prints one JSON line prefixed ::BENCH::.
+   Nothing is sent anywhere; it writes to stdout and exits. */
+
 /**
  * The workloads. This file is the contract of the whole project: the *same
  * bytes* run under Node on a GitHub-hosted runner and in your browser. If the
@@ -9,7 +14,7 @@
  * different ones, they did not do the same work and the result is thrown away.
  */
 
-export const SUITE_VERSION = "1";
+const SUITE_VERSION = "1";
 
 /** xorshift32. Integer-only, so it cannot drift between engines the way floats can. */
 function rng(seed) {
@@ -156,7 +161,7 @@ function runSort(src) {
   return sum | 0;
 }
 
-export const WORKLOADS = [
+const WORKLOADS = [
   { id: "parse", label: "parse", note: "scanning source text", setup: setupParse, run: runParse },
   { id: "alloc", label: "alloc", note: "objects and the collector", setup: null, run: runAlloc },
   { id: "hash", label: "hash", note: "integer work over bytes", setup: setupHash, run: runHash },
@@ -169,7 +174,7 @@ const now = () => (typeof performance !== "undefined" ? performance.now() : Date
  * One pass of every workload. Setup is deliberately outside the clock — we are
  * timing the work, not the construction of its input.
  */
-export function runPass(prepared) {
+function runPass(prepared) {
   const times = {};
   const checks = {};
   for (const w of WORKLOADS) {
@@ -181,7 +186,7 @@ export function runPass(prepared) {
   return { times, checks };
 }
 
-export function prepare() {
+function prepare() {
   const prepared = {};
   for (const w of WORKLOADS) prepared[w.id] = w.setup ? w.setup() : undefined;
   return prepared;
@@ -196,7 +201,7 @@ export function prepare() {
  *
  * @param {{ reps?: number, onProgress?: (done: number, total: number, ms: number) => void }} [opts]
  */
-export function runSuite({ reps = 5, onProgress } = {}) {
+function runSuite({ reps = 5, onProgress } = {}) {
   const prepared = prepare();
   const passes = [];
   let checks = null;
@@ -225,14 +230,14 @@ export function runSuite({ reps = 5, onProgress } = {}) {
   };
 }
 
-export function median(xs) {
+function median(xs) {
   const a = [...xs].sort((x, y) => x - y);
   const m = a.length >> 1;
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
 }
 
 /** Spread as a share of the median — how much the same box varies run to run. */
-export function spread(passes) {
+function spread(passes) {
   const t = passes.map((p) => p.total);
   const m = median(t);
   return m > 0 ? (Math.max(...t) - Math.min(...t)) / m : 0;
@@ -247,12 +252,12 @@ export function spread(passes) {
  * in a browser — but the work inside every thread is this same function, which
  * is the part that has to match.
  */
-export function hashUnit() {
+function hashUnit() {
   const buf = setupHash();
   return () => runHash(buf);
 }
 
-export const PARALLEL_REPS = 4;
+const PARALLEL_REPS = 4;
 
 /**
  * One thread's share of the parallel phase, accumulator and all.
@@ -264,9 +269,73 @@ export const PARALLEL_REPS = 4;
  * four — which the hash checksum happens to be. Both made the integrity check
  * pass while checking nothing.
  */
-export function parallelShare(reps = PARALLEL_REPS) {
+function parallelShare(reps = PARALLEL_REPS) {
   const run = hashUnit();
   let c = 17;
   for (let i = 0; i < reps; i++) c = (Math.imul(c, 31) + run() + i) | 0;
   return c;
+}
+
+import os from "node:os";
+import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
+import { fileURLToPath } from "node:url";
+
+if (!isMainThread) {
+  parentPort.postMessage(parallelShare(workerData.reps));
+} else {
+  const self = fileURLToPath(import.meta.url);
+
+  const parallel = (threads) =>
+    new Promise((resolve, reject) => {
+      const t0 = performance.now();
+      let done = 0;
+      const shares = [];
+      for (let i = 0; i < threads; i++) {
+        const w = new Worker(self, { workerData: { reps: PARALLEL_REPS } });
+        w.on("message", (c) => { shares.push(c); });
+        w.on("error", reject);
+        w.on("exit", () => {
+          if (++done === threads) {
+            resolve({ threads, ms: performance.now() - t0, passes: threads * PARALLEL_REPS, shares });
+          }
+        });
+      }
+    });
+
+  const cpus = os.cpus();
+  const suite = runSuite({ reps: 7 });
+  const one = await parallel(1);
+  const many = await parallel(cpus.length);
+
+  console.log("::BENCH::" + JSON.stringify({
+    version: SUITE_VERSION,
+    label: process.env.RUNNER_LABEL || "unknown",
+    visibility: process.env.REPO_VISIBILITY || "unknown",
+    round: Number(process.env.ROUND || 0),
+    os: process.platform,
+    arch: process.arch,
+    node: process.versions.node,
+    cpuModel: (cpus[0] && cpus[0].model || "").trim(),
+    cores: cpus.length,
+    memGB: +(os.totalmem() / 1024 ** 3).toFixed(1),
+    median: +suite.median.toFixed(2),
+    best: +suite.best.toFixed(2),
+    worst: +suite.worst.toFixed(2),
+    spread: +spread(suite.passes).toFixed(4),
+    byWorkload: Object.fromEntries(Object.entries(suite.byWorkload).map(([k, v]) => [k, +v.toFixed(2)])),
+    checks: suite.checks,
+    parallel: {
+      oneThreadMs: +one.ms.toFixed(2),
+      allThreadsMs: +many.ms.toFixed(2),
+      threads: many.threads,
+      throughput: +((many.passes / many.ms) * 1000).toFixed(3),
+      speedup: +(((many.passes / many.ms) / (one.passes / one.ms))).toFixed(3),
+      // Every thread must land on the same share as the single thread did.
+      // Compared elementwise rather than combined, because any commutative
+      // combiner can cancel identical values and report agreement it never saw.
+      check: many.shares.length === many.threads
+        && many.shares.every((s) => s === one.shares[0]),
+    },
+    at: new Date().toISOString(),
+  }));
 }

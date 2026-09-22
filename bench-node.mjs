@@ -8,13 +8,10 @@
 import os from "node:os";
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
-import { runSuite, spread, hashUnit, PARALLEL_REPS, SUITE_VERSION } from "./src/lib/bench.mjs";
+import { runSuite, spread, parallelShare, PARALLEL_REPS, SUITE_VERSION } from "./src/lib/bench.mjs";
 
 if (!isMainThread) {
-  const run = hashUnit();
-  let c = 0;
-  for (let i = 0; i < workerData.reps; i++) c = (c ^ run()) | 0;
-  parentPort.postMessage(c);
+  parentPort.postMessage(parallelShare(workerData.reps));
 } else {
   const self = fileURLToPath(import.meta.url);
 
@@ -22,14 +19,14 @@ if (!isMainThread) {
     new Promise((resolve, reject) => {
       const t0 = performance.now();
       let done = 0;
-      let check = 0;
+      const shares = [];
       for (let i = 0; i < threads; i++) {
         const w = new Worker(self, { workerData: { reps: PARALLEL_REPS } });
-        w.on("message", (c) => { check = (check ^ c) | 0; });
+        w.on("message", (c) => { shares.push(c); });
         w.on("error", reject);
         w.on("exit", () => {
           if (++done === threads) {
-            resolve({ threads, ms: performance.now() - t0, passes: threads * PARALLEL_REPS, check });
+            resolve({ threads, ms: performance.now() - t0, passes: threads * PARALLEL_REPS, shares });
           }
         });
       }
@@ -63,7 +60,11 @@ if (!isMainThread) {
       threads: many.threads,
       throughput: +((many.passes / many.ms) * 1000).toFixed(3),
       speedup: +(((many.passes / many.ms) / (one.passes / one.ms))).toFixed(3),
-      check: many.check === one.check,
+      // Every thread must land on the same share as the single thread did.
+      // Compared elementwise rather than combined, because any commutative
+      // combiner can cancel identical values and report agreement it never saw.
+      check: many.shares.length === many.threads
+        && many.shares.every((s) => s === one.shares[0]),
     },
     at: new Date().toISOString(),
   }));
