@@ -1,0 +1,57 @@
+name: bench
+
+# Runs the suite on GitHub-hosted runners. `visibility` is recorded in the
+# result because it changes the hardware: a private repo gets a 2-core runner
+# and a public one gets 4, and the whole point is to publish that difference
+# rather than assert it.
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "linux | full"
+        default: "linux"
+      visibility:
+        description: "private | public"
+        default: "private"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        run: |
+          if [ "${{ inputs.scope }}" = "full" ]; then
+            echo 'matrix={"os":["ubuntu-latest","ubuntu-22.04","windows-latest","macos-latest","macos-15-intel"],"round":[1,2,3]}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'matrix={"os":["ubuntu-latest"],"round":[1,2,3]}' >> "$GITHUB_OUTPUT"
+          fi
+
+  bench:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned so every runner is measured on the same engine. A version drift
+      # between runners would show up as a hardware difference and it is not one.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.1"
+      - name: run suite
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ matrix.os }}
+          REPO_VISIBILITY: ${{ inputs.visibility }}
+          ROUND: ${{ matrix.round }}
+        run: |
+          node bench-node.mjs | tee raw.txt
+          grep '^::BENCH::' raw.txt | sed 's/^::BENCH:://' > result.json
+          cat result.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ inputs.visibility }}-${{ matrix.os }}-${{ matrix.round }}
+          path: result.json
