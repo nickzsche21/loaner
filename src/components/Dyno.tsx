@@ -244,10 +244,10 @@ export default function Dyno() {
         <div className="mt-7 border-t border-line-soft pt-5">
           <div className="plate">for an exact reading</div>
           <p className="mt-2 max-w-[62ch] text-[14px] leading-relaxed text-mid">
-            A browser is not a fair stand-in for Node. On the machine this was built on the same
-            suite ran <strong className="text-ink">4.5× slower</strong> in the browser than under
-            Node on identical silicon — and unevenly, which is worse: sorting strings came out the
-            same, hashing bytes was eleven times slower. Run the same command here and the
+            A browser is not a fair stand-in for Node. On the machine this was built on, the same
+            suite ran somewhere between <strong className="text-ink">4.5× and 15× slower</strong> in
+            the browser than under Node on identical silicon — the range is not a typo, it varied
+            that much between runs while Node did not move. Run the same command here and the
             comparison becomes Node against Node, with nothing left to argue about.
           </p>
           <textarea

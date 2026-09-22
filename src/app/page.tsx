@@ -64,16 +64,19 @@ export default function Page() {
         <p>
           <strong className="text-ink">A browser is not a fair stand-in for Node.</strong> This was
           meant to be a footnote about sandboxing and background tabs. Measured, it was not small.
-          On the machine this was built on the suite took{" "}
-          <span className="num text-ink">272 ms</span> under Node and{" "}
-          <span className="num text-ink">1,211 ms</span> in the browser on identical silicon —{" "}
-          <strong className="text-ink">4.5× slower</strong>, running the same code. Worse, it was
-          uneven: sorting strings took <span className="num text-ink">73 ms</span> against{" "}
-          <span className="num text-ink">71</span>, while hashing bytes took{" "}
-          <span className="num text-ink">72 ms</span> against <span className="num text-ink">829</span>
-          — eleven times. A ratio measured that way blames the hardware for the browser, and it does
-          not even do so consistently. That is why the exact path is Node against Node, and why a
-          browser reading is labelled indicative wherever it is used.
+          On the machine this was built on, Node held steady at about{" "}
+          <span className="num text-ink">272 ms</span> across every run. The browser, on the same
+          silicon running the same code, gave <span className="num text-ink">1,211 ms</span> once
+          and <span className="num text-ink">3,997 ms</span> another time — somewhere between{" "}
+          <strong className="text-ink">4.5× and 15× slower</strong>, depending on nothing the page
+          could see. The per-workload spread was wider still: sorting strings matched Node almost
+          exactly, while hashing bytes ran eleven times slower.
+        </p>
+        <p>
+          So a browser-against-runner ratio would blame the hardware for the browser, by a factor it
+          cannot pin down. That is why the exact path is <strong className="text-ink">Node against
+          Node</strong> — the identical file on both machines — and why a browser reading is labelled
+          indicative everywhere it is used.
         </p>
         <p>
           <strong className="text-ink">Engines differ too.</strong> The runner side is Node, which is

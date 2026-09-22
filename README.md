@@ -43,9 +43,11 @@ curl -fsSL https://<site>/runner.mjs -o loaner.mjs && node loaner.mjs
 The plan was: run it in your browser, run it on your runner, compare. A footnote would cover
 sandboxing.
 
-Measured, the footnote was the story. On the machine this was built on the suite took **272 ms**
-under Node and **1,211 ms** in the browser — same silicon, same code, **4.5× slower**. Worse, it was
-uneven: sorting strings took 73 ms against 71, while hashing bytes took 72 ms against **829**.
+Measured, the footnote was the story. On the machine this was built on, Node held steady at about
+**272 ms** across every run. The browser, same silicon and same code, gave **1,211 ms** once and
+**3,997 ms** another time — between **4.5× and 15× slower**, varying by a factor of three between
+runs while Node did not move. The per-workload spread was wider still: sorting strings matched Node
+almost exactly, hashing bytes ran **eleven times** slower.
 
 A browser-against-runner ratio would have blamed the hardware for the browser, and inconsistently.
 So the exact path is **Node against Node** — the identical file on both machines — and the browser
